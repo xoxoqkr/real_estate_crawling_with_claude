@@ -3,3 +3,4 @@ __pycache__/
 .venv/
 *.log
 data/state/browser_profile/
+.env

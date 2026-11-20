@@ -41,6 +41,8 @@ def load_config() -> dict:
     except ImportError:
         pass
     base = Path(os.getenv("WORK_DIR", HERE))
+    if not base.is_absolute():  # 상대 경로는 실행 위치가 아니라 이 스크립트 폴더 기준
+        base = HERE / base
     return {
         "key": os.getenv("VWORLD_KEY", ""),
         "domain": os.getenv("VWORLD_DOMAIN", ""),

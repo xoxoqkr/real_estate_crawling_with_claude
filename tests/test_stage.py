@@ -78,7 +78,7 @@ def test_make_template_keeps_existing_rows(tmp_path):
     p = _csv(tmp_path, "가구역,관리처분인가,2026-10-01,수동,메모\n")
     assert stage.make_template(xlsx, p) == 1  # 나구역만 추가, 다구역은 해당없음이라 제외
     rows = stage.load_stage_table(p)
-    assert rows == [{"kw": "가구역", "stage": "관리처분인가", "date": "2026-10-01", "gu": "", "kind": ""}]
+    assert rows == [{"kw": "가구역", "stage": "관리처분인가", "date": "2026-10-01", "gu": "", "kind": "", "src": "수동"}]
     assert "나구역" in p.read_text(encoding="utf-8-sig")
 
 

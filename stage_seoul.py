@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from stage import COLS
+from stage import COLS, SEOUL_QUARTERLY
 
-SOURCE = "서울시 정비사업 추진현황"
+SOURCE = SEOUL_QUARTERLY
 HEAD_ROWS = 4  # 머리글 4줄 뒤부터 데이터
 COLNAMES = ["CODE", "순번", "자치구", "구역명", "위치1", "위치2", "공공민간", "일반재촉", "사업유형", "단계", "멸실",
             "지정최초", "지정변경", "추진위", "조합설립", "건축심의", "시행최초", "시행변경", "관리최초", "관리변경",

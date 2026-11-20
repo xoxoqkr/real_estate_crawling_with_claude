@@ -54,6 +54,7 @@ TIER_NOTE = {
     "C": "C 관리처분인가 후: 경매 신청 채권자가 금융기관·국가일 때만 조합원 승계 가능",
 }
 COLS = ["구역키워드", "자치구", "단계", "확인일", "출처", "사업유형", "비고"]
+SEOUL_QUARTERLY = "서울시 정비사업 추진현황"  # stage_seoul.SOURCE와 같은 값 (순환 import를 피하려고 여기 둠)
 
 
 def normalize_stage(text) -> str | None:
@@ -83,7 +84,8 @@ def load_stage_table(path: Path) -> list[dict]:
             st = normalize_stage(r.get("단계"))
             if kw and st:
                 rows.append({"kw": kw, "stage": st, "date": (r.get("확인일") or "").strip(),
-                             "gu": (r.get("자치구") or "").strip(), "kind": (r.get("사업유형") or "").strip()})
+                             "gu": (r.get("자치구") or "").strip(), "kind": (r.get("사업유형") or "").strip(),
+                             "src": (r.get("출처") or "").strip()})
             elif kw and (r.get("단계") or "").strip():
                 print(f"  zone_stage.csv: '{kw}'의 단계 '{r.get('단계')}'를 해석하지 못해 건너뜀")
     return rows
@@ -94,17 +96,27 @@ def lookup(zone_name, rows: list[dict], gu: str | None = None) -> tuple[str | No
 
     키워드 앞뒤로 숫자·하이픈이 이어지면 다른 구역이다(신림1 ≠ 신림10, 봉천1 ≠ 봉천1-1).
     행에 자치구가 적혀 있고 gu도 주어지면 둘이 같을 때만 쓴다.
+    예외: 가장 최근 행이 서울시 분기 자료(SEOUL_QUARTERLY)인데 다른 출처(구청 고시·수동)에 더 높은 단계가 있으면 그 행을 쓴다.
+    분기 자료는 기준일 직전의 인가를 늦게 반영하고 분양신청은 추정이라, 예를 들어 6/26 관리처분인가 고시가 6/30 기준 자료의
+    '분양신청(추정)'에 밀리지 않게 한다.
     """
     if not isinstance(zone_name, str) or not zone_name:
         return None, "", ""
-    best = None
+    hits = []
     for r in rows:
         if r.get("gu") and gu and r["gu"] != gu:
             continue
         if re.search(r"(?<![\d-])" + re.escape(r["kw"]) + r"(?!\d|-\d)", zone_name):
-            if best is None or r["date"] > best["date"]:
-                best = r
-    return (best["stage"], best["date"], best.get("kind", "")) if best else (None, "", "")
+            hits.append(r)
+    if not hits:
+        return None, "", ""
+    best = max(hits, key=lambda r: r["date"])
+    if best.get("src") == SEOUL_QUARTERLY:
+        order = {name: i for i, (name, _) in enumerate(STAGES)}
+        higher = [r for r in hits if r.get("src") != SEOUL_QUARTERLY and order[r["stage"]] > order[best["stage"]]]
+        if higher:
+            best = max(higher, key=lambda r: (order[r["stage"]], r["date"]))
+    return best["stage"], best["date"], best.get("kind", "")
 
 
 def attach(df: pd.DataFrame, csv_path: Path) -> pd.DataFrame:

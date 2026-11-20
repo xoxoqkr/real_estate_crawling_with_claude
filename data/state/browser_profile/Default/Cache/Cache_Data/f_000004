@@ -1,0 +1,903 @@
+//검색
+var view_id = '#auction_result';
+
+// 뒤로가기 동작 시 현재 페이지가 search인 경우 
+window.onpageshow = function (event) {
+    if (event.persisted || (window.performance && ( window.performance.navigation.type == 2))) {
+		if((window.location.href.indexOf('/search') != -1 )){
+			let tmpCourtMain = localStorage.getItem("tmpCourtMain")
+			let tmpCourtSub = localStorage.getItem("tmpCourtSub")
+
+			if(tmpCourtMain !== 'undefined' && tmpCourtSub !== 'undefined'){
+				set_court_detail(tmpCourtMain, tmpCourtSub)
+				return
+			}
+
+			if(tmpCourtMain !== 'undefined'){
+				set_court_detail(tmpCourtMain)
+				return
+			}
+		}
+    }
+}
+
+
+$(document).ready(function () {
+	let storageListViewCnt
+	storageListViewCnt = localStorage.getItem("listViewCnt")
+	if(storageListViewCnt > 0){
+		$("input[name=list_view_cnt]").val(storageListViewCnt)
+	}
+
+	if(!(window.location.href.indexOf('/auction') != -1 || window.location.href.indexOf('/product') != -1)){
+		// 물건알림 Live
+		$.post("/ajax?json&ajax.id=main@alarm_relay.ajax", function(output){
+			const json = JSON.parse(output);
+			if (json.ok == true) {
+				//console.log(json.data);
+				$(json.data).each(function(idx,data){
+					console.log(data);
+					data['물건번호'] = data['물건번호'] ? data['물건번호'] : 1; 
+					var html = '';
+					html +='<li>';
+					html +='	<p class="relay_pf_cnt">';
+					html +='		<span class="relay_profile material-symbols-outlined">';
+					html +='			location_home';
+					html +='		</span>';
+					html +='		<span class="relay_bold">'+ data.name +'님</span>';
+					html +='	</p>';
+					html +='	<span class="realay_intxt">';
+					html +='		'+ data['법원명'] +' '+ data['사건년도'] +'타경'+ data['사건번호'] +'물건을 전달하였습니다.';
+					html +='		<button class="check_btn" data-code="'+ data['전달코드']+'" data-token="'+(data['법원코드']+'|'+data['사건년도']+'|'+data['사건번호']+'|'+data['물건번호'])+'">';
+					html +='			물건 보러가기';
+					html +='			<span class="material-symbols-outlined">';
+					html +='				double_arrow';
+					html +='			</span>';
+					html +='		</button>';
+					html +='	</span>';
+					html +='</li>';
+					$(".alarm_list").append( html );
+				});
+				$(".relay.layer").fadeIn('slow');
+			}
+		});
+	}
+
+    //주소
+    var addr_url = speedjs.to_ajax('html','main@address.ajax');
+    var addr_view_id = '';
+    var addr_params = {};
+    $('#addr1').change(function () {
+        addr_view_id = '#addr2';
+        addr_params = {
+            'addr1': $(this).val()
+        };
+
+		$(addr_view_id).load(addr_url, addr_params);
+
+        //전체를 눌렀을때 초기화
+        if ($(this).val() == '00') {
+            addr_view_id = '#addr3';
+            addr_params = {
+                'addr2': '00'
+            };
+
+			$(addr_view_id).load(addr_url, addr_params);
+        }
+    });
+    $('#addr2').change(function () {
+        addr_view_id = '#addr3';
+        addr_params = {
+            'addr2': $(this).val()
+        };
+		$(addr_view_id).load(addr_url, addr_params);
+    });
+
+
+    $('input:checkbox').click(function () {
+        var checked = $(this).is(':checked');
+        var data_group = $(this).attr('class');
+
+        if (checked) {
+            var group_chk = true;
+
+            $('input:checkbox.' + data_group).each(function (index, item) {
+
+                var each_chk = $(item).is(':checked');
+                if (!each_chk) {
+                    group_chk = false;
+                    return false;
+                }
+            });
+
+            if (group_chk) {
+                $('input:checkbox[id="use' + data_group + '_all"]').prop('checked', true);
+            }
+
+        } else {
+            $('input:checkbox[id=use' + data_group + '_all]').prop('checked', false);
+        }
+    });
+
+	//폼에서 어떠한 클릭행동이 발생한 경우 매각기일이 없다면 강제로 3개월 값 채워주기
+	$("#searchform").click(function(){
+		let date = new Date();
+		let year = date.getFullYear();
+		let month = ("0" + (1 + date.getMonth())).slice(-2);
+		let day = ("0" + date.getDate()).slice(-2);
+		date.setDate(date.getDate() + 92);
+
+		// if(!$("#sell_yyyymmdd_ss").val()){
+		// 	$("#sell_yyyymmdd_ss").val(year + "-" + month + "-" + day)	
+		// }
+		if(!$("#sell_yyyymmdd_ee").val()){
+			$("#sell_yyyymmdd_ee").val(date.toISOString().slice(0,10))
+		}
+	})
+
+
+	//해당 부분 추가 사건번호가 새로운 클릭행위가 발생하였을때 무조건 초기화 하도록 조치 
+	//2025-07-09 실장 요청사항 반영
+	$("#searchform input, #searchform select").click(function(){
+		elName = $(this).attr('name')
+
+		if(elName == 'eventno1' || elName == 'eventno2' || elName =='lastresultcode' ){
+			return
+		}
+
+		$("select[name=eventno1]").val('').prop("selected", true);
+		$("input[name=eventno2]").val("")
+	})
+
+	//eventNo 컨트롤시 경매결과 전체로 전환
+	//2025-07-09 실장 요청사항 반영
+	$("input[name=eventno2]").keyup(function(e){
+		$("select[name=lastresultcode] option:eq(0)").prop("selected",true);
+	})
+
+});
+
+function checkall(obj) {
+    var data_group = $(obj).data('group');
+    var this_id = $('#use' + data_group + '_all');
+    var checked = this_id.is(':checked');
+    if (checked) {
+        $('input:checkbox[class=' + data_group + ']').prop('checked', true);
+    } else {
+        $('input:checkbox[class=' + data_group + ']').prop('checked', false);
+    }
+
+}
+
+function set_sub_court(){
+    $("#court_sub").val($("#courtNo_sub option:selected").text());
+}
+
+// 배열 빈값 패턴
+function isNotEmpty(arr){
+  return arr.value.replace(/0/g,'') != "";
+}
+
+// 로딩바
+function loading_bar() {
+	return '<p style="text-align:center;"><img src="/pub/images/loading.gif"></p>';
+}
+
+// 검색 페이지 이동
+function getpage(page) {
+    $("#page").val(page);
+	$('.tbl_result').html( loading_bar() ).delay(1000);
+    var params = $('#searchform').serializeArray().filter(isNotEmpty);
+	speedjs.ajax_event('post','search@auction_result2.ajax', params, '.tbl_result');
+	scroll_top('#auction_result', 45)
+}
+
+function getpage2(page){
+	let list_view_cnt = $("input[name=list_view_cnt]").val()
+    $("#page").val(page)
+	$('.tbl_result').html( loading_bar() ).delay(1000)
+    var params = $('#searchform').serializeArray().filter(isNotEmpty)
+	speedjs.ajax_event('post','search@auction_result2.ajax', params, '.tbl_result');
+	
+	if(list_view_cnt > 0){
+		localStorage.setItem('listViewCnt',list_view_cnt)
+	}
+	scroll_top('#auction_result', 45)
+}
+
+// 물건통계 클릭
+function search_obj(code, el) {
+	$("li.sel").removeClass("sel")
+	$(el).addClass("sel")
+	$('#page').val(1);
+    $("#usagecode_new").val('');
+    $("#lastresultcode_new").val(code);
+	//$(".use").show();
+	$('#auction_result > div.group > div > dl:nth-child(2) > dd').html( loading_bar() ).delay(1000);
+	$('.tbl_result').html( loading_bar() ).delay(1000);
+    var params = $('#searchform').serializeArray().filter(isNotEmpty);
+	speedjs.ajax_event('post', 'search@yongdo_result.ajax', params, '#auction_result > div.group > div > dl:nth-child(2) > dd');
+	speedjs.ajax_event('post', 'search@auction_result2.ajax', params, '.tbl_result');
+}
+
+// 용도통계 클릭
+function search_usage(code, el) {
+	$("#auction_result > div.group > div > dl:nth-child(2) > dd > ul > li.sel").removeClass("sel")
+	$(el).addClass("sel")
+	$('#page').val(1);
+    $("#lastresultcode_new").val('');
+	$("#usagecode_new").val(code);
+	//$(".use").hide();
+	$('.tbl_result').html( loading_bar() ).delay(1000);
+    var params = $('#searchform').serializeArray().filter(isNotEmpty);
+	speedjs.ajax_event('post','search@auction_result2.ajax', params, '.tbl_result');
+}
+
+// 용도통계 클릭
+function search_usage2(code, lastNewCode, el) {
+	$("#auction_result > div.group > div > dl:nth-child(2) > dd > ul > li.sel").removeClass("sel")
+	$(el).addClass("sel")
+	$('#page').val(1);
+    $("#lastresultcode_new").val(lastNewCode);
+	$("#usagecode_new").val(code);
+	//$(".use").hide();
+	$('.tbl_result').html( loading_bar() ).delay(1000);
+    var params = $('#searchform').serializeArray().filter(isNotEmpty);
+	speedjs.ajax_event('post','search@auction_result2.ajax', params, '.tbl_result');
+}
+
+// 용도통계(공매) 클릭
+function search_kcode(code, submit) {
+	$('#page').val(1);
+    $("#y_code").val(code);
+	if (submit) {
+		$('#kamcoform').submit(); return false;
+	}
+	$('.tbl_result').html( loading_bar() ).delay(1000);
+    var params = $('#kamcoform').serializeArray().filter(isNotEmpty);
+	speedjs.ajax_event('post','search@kamco_result.ajax', params, '.kamco_result');
+}
+
+// 관심(경매)저장_by리스트
+function add_interest() {
+	var checked = $('.tbl_result input[type=checkbox]:checked');
+	if(!$(checked).length){
+		alert('최소 1건 이상 선택해야 합니다.');
+		return false;
+	}
+	
+	if($(checked).length == 1){
+		var token
+		var el_data
+		$.each(checked, function(i, obj){
+			el_data = $(obj).closest('tr').data()
+			token = el_data.courtno+"|"+el_data.eventno+"|"+el_data.eventno2+"|"+el_data.objno
+		})
+		window.open('/pop/open/!/wish/edit?token='+token,'viewtop','width=550,height=650');
+	}else{
+		var data = [];
+		$.each(checked, function(i,obj) {
+			data[i] = $(obj).closest('tr').data();
+		});
+		speedjs.ajax_event('post', 'search@add_interest.ajax', {'data':data},':alert');
+	}
+}
+
+// 관심(예정)저장_by리스트
+function add_interest_pretned() {
+	var checked = $('.tbl_result input[type=checkbox]:checked');
+	if(!$(checked).length){
+		alert('최소 1건 이상 선택해야 합니다.');
+		return false;
+	}
+	
+	if($(checked).length == 1){
+		var token
+		var el_data
+		$.each(checked, function(i, obj){
+			el_data = $(obj).closest('tr').data()
+			token = el_data.courtno+"|"+el_data.eventno+"|"+el_data.eventno2+"|"+el_data.objno			
+		})
+		
+		window.open('/pop/open/!/pretend/edit?token='+token,'viewtop','width=550,height=650');
+	}else{
+		var data = [];
+		$.each(checked, function(i,obj) {
+			data[i] = $(obj).closest('tr').data();
+		});
+		speedjs.ajax_event('post', 'search@add_interest.ajax', {'data':data},':alert');
+	}
+}
+
+// 관심(공매)저장_by리스트
+function add_interest_kamco() {
+	var checked = $('.tbl_result input[type=checkbox]:checked');
+	if(!$(checked).length){
+		alert('최소 1건 이상 선택해야 합니다.');
+		return false;
+	}
+	var data = [];
+	$.each(checked, function(i,obj) {
+		var item = $(obj).val().split("&"); 
+		data[i] = {
+			'cid' : item[0], 'oid' : item[1],
+		}
+		console.log($.param(data[i]));
+	});
+	speedjs.ajax_event('post', 'search@add_interest_kamco.ajax', {'data':data},':alert');
+}
+
+function add_interest_token($token) {
+	var tokens = token.split('|');
+	var data = {
+		'courtno':tokens[0],
+		'eventno1':tokens[1],
+		'eventno2':tokens[2],
+		'objno':tokens[3]
+	};
+	speedjs.ajax_event('post', 'search@add_interest.ajax', {'data':data},':alert');
+}
+
+// 인쇄
+function f_print(target){
+    var initBody = document.body.innerHTML;
+    window.onbeforeprint = function(){
+        // target는 인쇄하고자 하는 영역의 tag를 말합니다.( 필수 )
+        document.body.innerHTML = $(target).html();
+    }
+    window.onafterprint = function(){
+        document.body.innerHTML = initBody;
+    }
+    window.print();
+}
+
+// 신규인쇄
+function f_print_NEW(target, typeName, Mc){
+    checkList = [];
+    checkBoxs = $(target).find('input[type=checkbox]');
+    if(checkBoxs){
+        $.each(checkBoxs, function (idx, el) {
+            if($(el).prop('checked')){
+                checkList.push(idx);
+            }
+        });
+    }
+
+    // 관심물건 인쇄시 해당문구 출력되어 디자인 망가지는 부분떄문에 숨김처리
+    $(target).find('.interest_parent').hide();
+
+    localStorage.setItem('printData', $(target).html());
+    localStorage.setItem('printType', typeName);
+    localStorage.setItem('printCheckList', checkList.join(','));
+	localStorage.setItem('member_code', Mc);
+
+    // 숨긴 요소 다시 보이기
+    $(target).find('.interest_parent').show();
+
+    window.open('/pub/html/auction_print.html', '스피드옥션 인쇄 페이지', 'scrollbars=no, width=940, top=0, left=0, height=1000');
+}
+
+// 검색조건 저장_경매
+function save_search(gubun) {
+	$("input[name=gubun]").val(gubun);
+	$(['selldate_s','selldate_e','p_estprice1','p_estprice2','p_minprice1','p_minprice2','p_bidcount1','p_bidcount2']).each(function(idx,data){
+		$("input[name="+ data +"]").val($("#"+ data).val());
+	});
+    var params = $('#searchform').serializeArray().filter(isNotEmpty);
+	speedjs.ajax_event('post', 'search@save_bookmark.ajax', params, ':alert', true);
+}
+
+// 검색조건 수정_경매
+function modify_saved(index, gubun) {
+	$("input[name=Idx]").val(index);
+	$("input[name=gubun]").val(gubun);
+	$(['selldate_s','selldate_e','p_estprice1','p_estprice2','p_minprice1','p_minprice2','p_bidcount1','p_bidcount2']).each(function(idx,data){
+		$("input[name="+ data +"]").val($("#"+ data).val());
+	});
+    var params = $('#searchform').serializeArray().filter(isNotEmpty);
+	speedjs.ajax_event('post', 'search@modify_bookmark.ajax', params, ':alert', true);
+}
+
+// 검색조건 삭제_경매
+function delete_saved(index, gubun) {
+	Confirm("해당 조건을 삭제합니다.",null,null,function(){
+		var param = {
+			'Idx': index,
+			'gubun': gubun,
+		}
+		speedjs.ajax_event('post', 'search@remove_bookmark.ajax', param, ':alert', true);
+	});
+	return false;
+}
+
+function saveRenewKamco(){
+	if (!$('#title').val()){
+		alert("제목을 입력해주세요.");
+		return false;
+	}
+
+	setRenewKamcoUseList()
+	SetRenewKamoInterestText()
+	$('input[name=srcmode]').val("srcins");
+	$('input[name=srctitle]').val($('#title').val());
+    var params = $('#kamcoform').serializeArray().filter(isNotEmpty);
+	$('#kamcoform').attr('method','post');
+	$('#kamcoform').submit(); return false;
+}
+
+// 검색조건 삭제_공매
+function deleteRenewKamco(index) {
+	var param = {'del_no' : index}
+	speedjs.ajax_event('post', 'kamco@removeKamco.ajax', param);
+	return false;
+}
+
+function setRenewKamcoUseList(){
+	var yongdoList = new Array();
+	$(".yongdoList").each(function(){
+		if( $(this).is(':checked') ){
+			yongdoList.push( "^"+$(this).val()+"^" )
+		}
+	});
+
+	if (yongdoList.length){
+		$("input[name=groupId]").val('');
+		$("input[name=chkbox_flag]").val(1);
+	}
+	
+	$("input[name=uselist]").val(yongdoList);
+
+}
+
+
+function SetRenewKamoInterestText(){
+	var ycode_all = new Array();
+	var text = '';
+	usetext = new Array("상가용및업무용건물","토지","자동차","주거용건물","용도복합용건물","폐기물","사무/가구/가전","미분류기타","농/임/축산용기계","기타기계기구","컴퓨터/전기/통신기계", "측정/실험및의료장비", "임산물"
+	,"기계설비","기타서비스기계/물품","교육시설/용품","이륜차","산업용및기타특수용건물","스포츠/레저","건축자재및기계","산업기계","선박","중기"
+	,"공구/제조부품/물품취급장비","예술품/악기","농수축산물","시계/귀금속","광물/토사석","인쇄,사진및시청각기기","회원권","어업용기계","판매권및광고권"
+	,"의류/가방/개인용품","무형자산","시스템장비등","회전기기및경전기","기타권리및증권","식료품/의약품","공공안전/치안장비","석유/화학/연료"
+	,"종이및출판물","피혁/섬유/직물","산업위생","철도","항공기","광산기계","NPL","중장비부품");
+	
+	if( $("#groupId").attr("disabled") != true ){
+		var groupIdtext = $("#groupId option:selected").text();
+		var groupIdval = $("#groupId option:selected").val();
+		text += "<span style=color:#6A76EC>용도 : </span>"+groupIdtext+" <br> ";
+	}else{
+		text += "<span style=color:#6A76EC>용도 : </span>용도 세분화 설정<br> ";
+	}
+	detailYongodo = $("input[name=uselist]").val()
+	if(detailYongodo){
+		text += "<span style=color:#6A76EC>세부용도 : </span>"+detailYongodo.replaceAll("^","")+" <br> ";
+	}
+	var reg_code1 = $("select[name=region_code1] option:selected").text();
+	var reg_code2 = $("select[name=region_code2] option:selected").text();
+	var reg_code3 = $("select[name=region_code3] option:selected").text();
+	if( reg_code1 != "전체" && reg_code2 == "구/군 선택" && reg_code3 == "동/읍 선택" )  text += "<span style=color:#6A76EC>소재지: </span>"+reg_code1+" <br> ";
+	if( reg_code1 != "전체" && reg_code2 != "구/군 선택"  && reg_code3 == "동/읍 선택" )  text += "<span style=color:#6A76EC>소재지: </span>"+reg_code1+" "+reg_code2+" <br> ";
+	if( reg_code1 != "전체" && reg_code2 != "구/군 선택"  && reg_code3 != "동/읍 선택" )  text += "<span style=color:#6A76EC>소재지: </span>"+reg_code1+" "+reg_code2+" "+reg_code3+" <br> ";
+	if( $("#quick_addr").val() ) text += "<span style=color:#6A76EC>물건명 : </span>"+$("#quick_addr").val()+" <br> ";
+	if( $("#ipchalno2").val() ) text += "<span style=color:#6A76EC>물건관리번호 : </span>"+$("#ipchalno2").val()+" <br> ";
+	text += "<span style=color:#6A76EC>감정가 : </span>"+$("#p_estprice1 option:selected").text()+" ~ "+$("#p_estprice2 option:selected").text()+" <br>";
+	text += "<span style=color:#6A76EC>최저가 : </span>"+$("#p_minprice1 option:selected").text()+" ~ "+$("#p_minprice2 option:selected").text()+" <br>";
+	text += "<span style=color:#6A76EC>절감율 : </span>"+$("#p_bidcount1 option:selected").text()+" ~ "+$("#p_bidcount2 option:selected").text()+" <br>";
+	text += "<span style=color:#6A76EC>입찰결과 : </span>"+$("#auction_result option:selected").text()+" <br>";
+	text += "<span style=color:#6A76EC>정렬방식 : </span>"+$("#orderby option:selected").text()+" <br>";
+	text += "<span style=color:#6A76EC>재산종류 : </span>"+$("#goods_type option:selected").text()+" <br>";
+	text += "<span style=color:#6A76EC>입찰방식 : </span>"+$("#ic_method option:selected").text()+" <br>";
+	if($("#selltype option:selected").text())text += "<span style=color:#6A76EC>처분방식 : </span>"+$("#selltype option:selected").text()+" <br>";
+	
+	if( $("#tOpt1").val() != "" )text += "<span style=color:#6A76EC>다른법령에 따른 지역/지구 : </span>"+$("#tOpt1").val()+" <br>";
+	if( $("#tOpt2").val() != "" )text += "<span style=color:#6A76EC>다른법령에 따른 지역/지구 : </span>"+$("#tOpt2 option:selected" ).text()+" <br>";
+	
+	$("input[name=interest_text]").val(text);
+
+	return text;
+}
+
+
+// 검색조건 저장_공매
+function save_kamco() {
+	if (!$('#title').val()){
+		alert("제목을 입력해주세요.");
+		return false;
+	}
+	set_k_uselist();  //set용도리스트
+	get_src_text2();  //interest_text 만들기
+	$('input[name=srcmode]').val("srcins");
+	$('input[name=srctitle]').val($('#title').val());
+    var params = $('#searchform').serializeArray().filter(isNotEmpty);
+	$('#searchform').attr('method','post');
+	$('#searchform').submit(); return false;
+}
+
+
+
+// 검색조건 삭제_공매
+function delete_kamco(index) {
+	var params = {'del_no' : index}
+	$.post("/ajax?post&ajax.id=search@remove_kamco.ajax", params, function(res){
+		//console.log(res);
+		location.reload();
+	});
+	return false;
+}
+
+function set_k_uselist(){
+	var ylist = new Array();
+	$(".ycode").each(function(){
+		if( $(this).is(':checked') ) ylist.push( "^"+$(this).val()+"^" );
+	});
+	if (ylist.length){
+		$("input[y_code]").val('');
+		$("input[name=chkbox_flag]").val(1);
+	}
+	$("#uselist").val( ylist );
+}
+
+function get_src_text2(){
+	var ycode_all = new Array();
+	var text = '';
+	usetext = new Array("주거용건물","상가용건물","산업용건물","복합용건물","토지","자동차","이륜차","선박","중기","철도","항공기");
+	$(function(){
+		if( $("#y_code").attr("disabled") != true ){
+			var ycode_text = $("#y_code option:selected").text();
+			var ycode_val = $("#y_code option:selected").val();
+			text += "<span style=color:#6A76EC>용도 : </span>"+ycode_text+" <br> ";
+		}else{
+			for(var i = 1; i<= usetext.length ; i++){
+				var k = (i < 10) ? '0'+i : i;
+				if ( $("#p_usagecode"+k+"_all").is(':checked') ){
+					text += "<span style=color:#6A76EC>"+usetext[i-1]+" : </span>전체<br>";
+				}else{
+					var tmp = new Array();
+					//$(".ycode"+k).each(function(){
+					$(".use"+ i).each(function(){
+						if( $(this).is(':checked') )tmp.push( $(this).attr("title") );
+					});
+					if(tmp.length > 0)text += "<span style=color:#6A76EC>"+usetext[i-1]+" : </span>"+tmp+"<br>";
+				}
+			}
+		}
+		var reg_code1 = $("select[name=region_code1] option:selected").text();
+		var reg_code2 = $("select[name=region_code2] option:selected").text();
+		var reg_code3 = $("select[name=region_code3] option:selected").text();
+		if( reg_code1 != "전체" && reg_code2 == "구/군 선택" && reg_code3 == "동/읍 선택" )  text += "<span style=color:#6A76EC>소재지: </span>"+reg_code1+" <br> ";
+		if( reg_code1 != "전체" && reg_code2 != "구/군 선택"  && reg_code3 == "동/읍 선택" )  text += "<span style=color:#6A76EC>소재지: </span>"+reg_code1+" "+reg_code2+" <br> ";
+		if( reg_code1 != "전체" && reg_code2 != "구/군 선택"  && reg_code3 != "동/읍 선택" )  text += "<span style=color:#6A76EC>소재지: </span>"+reg_code1+" "+reg_code2+" "+reg_code3+" <br> ";
+		if( $("#quick_addr").val() ) text += "<span style=color:#6A76EC>물건명 : </span>"+$("#quick_addr").val()+" <br> ";
+		if( $("#ipchalno2").val() ) text += "<span style=color:#6A76EC>물건관리번호 : </span>"+$("#ipchalno2").val()+" <br> ";
+    	text += "<span style=color:#6A76EC>감정가 : </span>"+$("#p_estprice1 option:selected").text()+" ~ "+$("#p_estprice2 option:selected").text()+" <br>";
+    	text += "<span style=color:#6A76EC>최저가 : </span>"+$("#p_minprice1 option:selected").text()+" ~ "+$("#p_minprice2 option:selected").text()+" <br>";
+    	text += "<span style=color:#6A76EC>절감율 : </span>"+$("#p_bidcount1 option:selected").text()+" ~ "+$("#p_bidcount2 option:selected").text()+" <br>";
+    	text += "<span style=color:#6A76EC>입찰결과 : </span>"+$("#auction_result option:selected").text()+" <br>";
+    	text += "<span style=color:#6A76EC>정렬방식 : </span>"+$("#orderby option:selected").text()+" <br>";
+    	text += "<span style=color:#6A76EC>재산종류 : </span>"+$("#goods_type option:selected").text()+" <br>";
+    	text += "<span style=color:#6A76EC>입찰방식 : </span>"+$("#ic_method option:selected").text()+" <br>";
+    	if($("#selltype option:selected").text())text += "<span style=color:#6A76EC>처분방식 : </span>"+$("#selltype option:selected").text()+" <br>";
+    	if( $("#tOpt1").val() != "" )text += "<span style=color:#6A76EC>국계법에 따른 지역/지구 : </span>"+$("#tOpt1").val()+" <br>";
+    	if( $("#tOpt2").val() != "" )text += "<span style=color:#6A76EC>다른법령에 따른 지역/지구 : </span>"+$("#tOpt2").val()+" <br>";
+		$("#interest_text").attr("value", text);
+	});
+	return text;
+}
+
+
+function get_src_text3(){//예정
+	var text = '';
+	$(function(){
+		if( $("select[name=objuse] option:selected").text() != "용도구분" ){
+			var objuse_text = $("#objuse option:selected").text();
+			text += "<span style=color:#6A76EC>용도 : </span>"+objuse_text+" <br> ";
+		}else{
+			text += "<span style=color:#6A76EC>용도 : </span> 전체 <br> ";
+		}	
+	var objuse = $("select[name=objuse] option:selected").text();
+	var reg_code1 = $("select[name=region_code1] option:selected").text();
+	var reg_code2 = $("select[name=region_code2] option:selected").text();
+	var reg_code3 = $("select[name=region_code3] option:selected").text();
+	var courtNo = $("select[name=courtNo] option:selected").text();
+	var eventNo = $("#eventNo").val();
+	var courtNo2 = $("#courtNo2").val();
+	var eventNo2 = $("#eventNo2").val();
+
+	if( courtNo != "전국법원" ) { text += "<span style=color:#6A76EC>법원: </span>"+courtNo+" <br> ";
+	}else{
+	 text += "<span style=color:#6A76EC>법원: </span>전국법원<br> "
+	}
+	if( eventNo != "0" ) { 
+		if(eventNo2 ==''){//alert(eventNo2);		
+		text += "<span style=color:#6A76EC>사건번호: </span>"+eventNo+"<br> ";
+		}else{
+		text += "<span style=color:#6A76EC>사건번호: </span>"+eventNo+" 타경 "+eventNo2+"<br> ";
+		}
+	}else{
+	    text += "<span style=color:#6A76EC>사건번호: </span>전체<br> "
+	}
+	if( courtNo2 != "" ) 	text += "<span style=color:#6A76EC>담당: </span> 담당 "+courtNo2+" 계 <br> ";
+	if( reg_code1 != "전체" && reg_code2 == "구/군 선택" && reg_code3 == "동/읍 선택" )  text += "<span style=color:#6A76EC>소재지: </span>"+reg_code1+" <br> ";
+	if( reg_code1 != "전체" && reg_code2 != "구/군 선택"  && reg_code3 == "동/읍 선택" )  text += "<span style=color:#6A76EC>소재지: </span>"+reg_code1+" "+reg_code2+" <br> ";
+	if( reg_code1 != "전체" && reg_code2 != "구/군 선택"  && reg_code3 != "동/읍 선택" )  text += "<span style=color:#6A76EC>소재지: </span>"+reg_code1+" "+reg_code2+" "+reg_code3+" <br> ";
+	if( $("#relation_person").val() ) text += "<span style=color:#6A76EC>이해관계인 : </span>"+$("#relation_person").val()+" <br> ";
+	if( $("#ipchalno2").val() ) text += "<span style=color:#6A76EC>물건관리번호 : </span>"+$("#ipchalno2").val()+" <br> ";
+	text += "<span style=color:#6A76EC>경매개시결정일 : </span>"+$("#auction_date_ss").val()+" ~ "+$("#auction_date_ee").val()+" <br>";
+	text += "<span style=color:#6A76EC>공고일 : </span>"+$("#auction_date_ss").val()+" ~ "+$("#auction_date_ee").val()+" <br>";
+	text += "<span style=color:#6A76EC>종국결과 : </span>"+$("#auction_result option:selected").text()+" <br>";
+	text += "<span style=color:#6A76EC>정렬방식 : </span>"+$("#orderby option:selected").text()+" <br>";
+	text += "<span style=color:#6A76EC>경매종류 : </span>"+$("#auction_kind option:selected").text()+" <br>";
+	$("#interest_text").attr("value", text);
+	});
+	return text;
+}
+
+//listViewCnt 컨트롤 작업
+function setListView(el){
+	let list_view_cnt = el.value
+	if(list_view_cnt){
+		localStorage.setItem('listViewCnt',list_view_cnt)
+	}
+}
+
+
+//240524 lyh 엑셀파일 생성다운시 필요한 스크립드 로드
+var xlsxLoaded = false;
+var fileSaverLoaded = false;
+
+function loadScripts(callback) {
+    if (typeof XLSX !== 'undefined' && typeof XLSX.utils !== 'undefined') {
+        if (fileSaverLoaded) {
+            callback();
+            return;
+        }
+        loadFileSaver(callback); // XLSX가 로드되었지만 FileSaver가 로드되지 않은 경우
+    } else {
+        // XLSX가 로드되지 않은 경우
+        var xlsxScript = document.createElement('script');
+        xlsxScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js';
+        xlsxScript.onload = function () {
+            xlsxLoaded = true;
+            loadFileSaver(callback); // XLSX 로드 후 FileSaver 로드
+        };
+        document.head.appendChild(xlsxScript);
+    }
+}
+
+// 240524 lyh 종합검색과 컬럼이 다른 검색리스트 엑셀화
+function loadFileSaver(callback) {
+    if (typeof saveAs !== 'undefined') {
+        callback();
+        return;
+    }
+    // FileSaver가 로드되지 않은 경우
+    var fileSaverScript = document.createElement('script');
+    fileSaverScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js';
+    fileSaverScript.onload = function () {
+        fileSaverLoaded = true;
+        callback();
+    };
+    document.head.appendChild(fileSaverScript);
+}
+
+function exportTableToCSV() {
+    loadScripts(function () {
+        // 변환 함수를 정의합니다.
+        function s2ab(s) {
+            var buf = new ArrayBuffer(s.length);
+            var view = new Uint8Array(buf);
+            for (var i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
+            return buf;
+        }
+        
+            // 원본 테이블을 선택합니다.
+            var table = document.querySelector(".tbl_result table");
+
+            // 새로운 테이블을 만듭니다.
+            var newTable = document.createElement('table');
+            var rows = table.querySelectorAll('tr');
+
+			var idx = 0
+			var checker = false
+            rows.forEach(function(row) {
+				if(idx%2 == 0){
+					checker = true
+				}else{
+					checker = false 
+				}
+                var newRow = document.createElement('tr');
+                var cells = row.querySelectorAll('th, td');
+                for (var i = 0; i < cells.length; i++) { // 첫 번째 열을 건너뜁니다.
+                    if(checker && (i == 0)){
+						continue
+					}
+					if(checker && (i == 7)){
+						continue
+					}
+					if(!checker && (i == 3)){
+						continue
+					}
+					
+					var newCell = cells[i].cloneNode(true);        
+                    newRow.appendChild(newCell);
+                }
+                newTable.appendChild(newRow);
+				idx += 1
+            });
+
+            // 새로운 테이블을 워크북으로 변환
+            var wb = XLSX.utils.table_to_book(newTable, { sheet: "스피드옥션" });
+       
+        var ws = wb.Sheets["스피드옥션"];
+        var range = XLSX.utils.decode_range(ws['!ref']);		
+
+        // 열 너비 계산
+        var colWidths = [];
+        for (var C = range.s.c; C <= range.e.c; ++C) {
+            var maxWidth = 7; // 최소 열 너비
+            for (var R = range.s.r; R <= range.e.r; ++R) {
+                var cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+                var cell = ws[cellAddress];
+                if (cell && cell.v) {
+                    var cellValue = cell.v.toString();
+                    maxWidth = Math.max(maxWidth, cellValue.length + 1); // 셀 값의 길이로 너비 설정
+                }
+            }
+            colWidths.push({ wch: maxWidth });
+        }
+        ws['!cols'] = colWidths;
+
+        // 워크북을 바이너리 데이터로 변환
+        var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'binary' });
+
+        // 엑셀 파일로 저장
+        saveAs(new Blob([s2ab(wbout)], { type: "application/octet-stream" }), getXlsxFileName());
+    });
+}
+
+// 240524 lyh 엑셀파일 이름 설정
+function getXlsxFileName  (){
+	let today = new Date();                 
+	// 년도
+	let year = today.getFullYear();                 
+	// 월
+	let month = (today.getMonth() + 1).toString().padStart(2, '0');                  
+	// 일
+	let day = today.getDate().toString().padStart(2, '0');                 
+	// yyyymmddconst 
+	yyyymmdd = `${year}-${month}-${day}`;
+
+	return yyyymmdd+'_'+today.getTime()+'.xlsx';
+}
+
+
+/* 개선코드 
+
+// .js파일 로드 및 callback 처리
+function loadScript(src, callback) {
+    var script = document.createElement('script');
+    script.src = src;
+    script.onload = callback;
+    script.onerror = function() {
+        console.error(`Failed to load script: ${src}`);
+    };
+    document.head.appendChild(script);
+}
+
+// .js파일 로드 여부를 확인하고 callback 처리
+function loadScripts(callback) {
+    if (typeof XLSX === 'undefined' || typeof XLSX.utils === 'undefined') {
+        loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js', function() {
+            loadScript('https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js', callback);
+        });
+    } else if (typeof saveAs === 'undefined') {
+        loadScript('https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js', callback);
+    } else {
+        callback();
+    }
+}
+
+// 외부에서 기능 호출
+function exportTableToCSV() {
+    loadScripts(function () {
+        function s2ab(s) {
+            var buf = new ArrayBuffer(s.length);
+            var view = new Uint8Array(buf);
+            for (var i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
+            return buf;
+        }
+
+        function generateWorkbook(table, sheetName) {
+            return XLSX.utils.table_to_book(table, { sheet: sheetName });
+        }
+
+        function adjustColumnWidths(ws) {
+            var range = XLSX.utils.decode_range(ws['!ref']);
+            var colWidths = [];
+            for (var C = range.s.c; C <= range.e.c; ++C) {
+                var maxWidth = 7; // 최소 열 너비
+                for (var R = range.s.r; R <= range.e.r; ++R) {
+                    var cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+                    var cell = ws[cellAddress];
+                    if (cell && cell.v) {
+                        var cellValue = cell.v.toString();
+                        maxWidth = Math.max(maxWidth, cellValue.length + 1); // 셀 값의 길이로 너비 설정
+                    }
+                }
+                colWidths.push({ wch: maxWidth });
+            }
+            ws['!cols'] = colWidths;
+        }
+
+        function createFilteredTable() {
+            var originalTable = document.querySelector(".tbl_result table");
+            var newTable = document.createElement('table');
+            var rows = originalTable.querySelectorAll('tr');
+
+            rows.forEach(function(row) {
+                var newRow = document.createElement('tr');
+                var cells = row.querySelectorAll('th, td');
+                for (var i = 1; i < cells.length; i++) { // 첫 번째 열을 건너뜁니다.
+                    var newCell = cells[i].cloneNode(true);                    
+                    newRow.appendChild(newCell);
+                }
+                newTable.appendChild(newRow);
+            });
+
+            return newTable;
+        }
+
+        var table = document.querySelector(".tbl_result table");
+        var wb;
+
+        if (window.location.pathname.includes('search/sub/!/ready/01')) {
+            var filteredTable = createFilteredTable();
+            wb = generateWorkbook(filteredTable, "스피드옥션");
+        } else {
+            wb = generateWorkbook(table, "스피드옥션");
+        }
+
+        var ws = wb.Sheets["스피드옥션"];
+        adjustColumnWidths(ws);
+
+        var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'binary' });
+        saveAs(new Blob([s2ab(wbout)], { type: "application/octet-stream" }), getXlsxFileName());
+    });
+}
+
+// 파일명 생성
+function getXlsxFileName() {
+    let today = new Date();                 
+    let year = today.getFullYear();                 
+    let month = (today.getMonth() + 1).toString().padStart(2, '0');                  
+    let day = today.getDate().toString().padStart(2, '0');                 
+    let yyyymmdd = `${year}-${month}-${day}`;
+
+    return `${yyyymmdd}_${today.getTime()}.xlsx`;
+}
+
+*/
+
+// 240524 lyh 열람물건저장
+function add_select() {
+	var checked = $('.tbl_result input[type=checkbox]:checked');
+	if(!$(checked).length){
+		alert('최소 1건 이상 선택해야 합니다.');
+		return false;
+	}
+	
+	if($(checked).length >= 1){		
+			var data = [];
+		$.each(checked, function(i,obj) {
+			data[i] = $(obj).closest('tr').data();
+		});
+		speedjs.ajax_event('post', 'search@add_select.ajax', {'data':data},':alert');
+	}
+}
+
+// 240605 lyh 체크박스 일괄제어 / 페이지로드시 버튼 초기화 
+function fn_allchk(flag) {
+	$(".list_chk_box").prop("checked", flag);
+}
+
+function initializeCheckboxes() {
+	$('input[type="checkbox"]').prop('checked', false);
+}

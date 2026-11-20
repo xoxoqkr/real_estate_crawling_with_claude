@@ -22,6 +22,7 @@ from shapely.geometry import Point, shape
 
 from geocode import VWorld
 from speedauction_excel import load_items
+from stage import attach as attach_stage
 from zones import METRIC_CRS, load_zones
 
 HERE = Path(__file__).resolve().parent
@@ -51,6 +52,7 @@ def load_config() -> dict:
         "zones": Path(os.getenv("ZONE_DIR", base / "zones")),
         "output": Path(os.getenv("OUTPUT_DIR", base / "output")),
         "state": Path(os.getenv("STATE_DIR", base / "state")),
+        "stage_file": Path(os.getenv("STAGE_FILE", base / "zone_stage.csv")),
         "districts": [d.strip() for d in os.getenv("DISTRICTS", "").split(",") if d.strip()],
         "near_m": float(os.getenv("NEAR_METERS", "50")),
         "use_parcel": os.getenv("USE_PARCEL_POLYGON", "1") == "1",
@@ -152,7 +154,7 @@ def match(items: gpd.GeoDataFrame, zones: gpd.GeoDataFrame, near_m: float) -> pd
     return out
 
 
-def finish(df: pd.DataFrame, state_dir: Path) -> pd.DataFrame:
+def finish(df: pd.DataFrame, state_dir: Path, stage_file: Path | None = None) -> pd.DataFrame:
     seen_path = state_dir / "seen.json"
     seen = json.loads(seen_path.read_text(encoding="utf-8")) if seen_path.exists() else {}
     today = datetime.now().strftime("%Y-%m-%d")
@@ -169,12 +171,13 @@ def finish(df: pd.DataFrame, state_dir: Path) -> pd.DataFrame:
     pyeong = df["대지권㎡"] / PYEONG
     df["대지권평"] = pyeong.round(2)
     df["대지평당최저가(만원)"] = (df["최저가"] / pyeong / 10_000).round(0)
+    df = attach_stage(df, stage_file)  # 사업단계, 단계확인일, 입주권단계
     df["확인할것"] = ""
     df.loc[df["판정"].isin(["구역안", "구역걸침"]) | df["판정"].str.startswith("경계"), "확인할것"] = CHECKLIST
     order = {"구역안": 0, "구역걸침": 1}
     df["_o"] = df["판정"].map(lambda x: order.get(x, 2 if x.startswith("경계") else 3 if x == "해당없음" else 4))
     df = df.sort_values(["_o", "구", "매각기일"]).drop(columns="_o")
-    cols = ["판정", "신규", "구역명", "최근고시연도", "겹침%", "경계거리m", "구", "법원", "경매계", "사건번호", "물번", "소재지", "용도",
+    cols = ["판정", "입주권단계", "사업단계", "단계확인일", "신규", "구역명", "최근고시연도", "겹침%", "경계거리m", "구", "법원", "경매계", "사건번호", "물번", "소재지", "용도",
             "대지권㎡", "대지권평", "전용㎡", "감정가", "최저가", "최저가율%", "대지평당최저가(만원)", "매각기일",
             "결과", "유찰수", "특수조건", "확인할것", "상세링크", "구역출처", "구역속성", "정제주소", "PNU",
             "경도", "위도", "지오코딩주소", "최초확인일", "원본파일", "key"]
@@ -185,6 +188,7 @@ def write_excel(df: pd.DataFrame, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"재개발매칭_{datetime.now():%Y%m%d_%H%M}.xlsx"
     sheets = {
+        "입주권가능": df[df["판정"].isin(["구역안", "구역걸침"]) & df["입주권단계"].isin(["A", "B", "C"])],
         "구역안·걸침": df[df["판정"].isin(["구역안", "구역걸침"])],
         "경계근접": df[df["판정"].str.startswith("경계")],
         "전체": df,
@@ -232,7 +236,7 @@ def run_once(cfg: dict, dry_run: bool = False) -> Path | None:
     zones = load_zones(cfg["zones"], cfg["zone_crs"], cfg["zone_types"])
     vw = VWorld(cfg["key"], cfg["state"] / "geocode_cache.json", cfg["domain"])
     gdf = geocode_items(items, vw, cfg["use_parcel"])
-    result = finish(match(gdf, zones, cfg["near_m"]), cfg["state"])
+    result = finish(match(gdf, zones, cfg["near_m"]), cfg["state"], cfg["stage_file"])
     path = write_excel(result, cfg["output"])
     counts = result["판정"].value_counts().to_dict()
     print(f"  결과: {counts}")

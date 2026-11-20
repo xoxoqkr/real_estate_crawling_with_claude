@@ -24,6 +24,7 @@ import pandas as pd
 
 from match_auctions import load_config
 from speedauction_excel import COURT_CODES
+from stage import TIER_NOTE
 
 MYPAGE_URL = "/member/sub/!/mypage/01?page={page}&list_view_cnt=100"
 SAVE_AJAX = "/ajax?post&ajax.id=search@add_interest_v2.ajax"
@@ -78,6 +79,12 @@ def make_memo(r: pd.Series) -> str:
         f"대지권 {_fmt(r.get('대지권평'), '평', 2)}, 최저가 {_fmt((r.get('최저가') or 0) / 1e8, '억', 2)}"
         f"({_fmt(r.get('최저가율%'), '%')}), 대지 평당 최저가 {_fmt(r.get('대지평당최저가(만원)'), '만원')}",
     ]
+    st, tier = r.get("사업단계"), r.get("입주권단계")
+    if isinstance(st, str) and st:
+        d = r.get("단계확인일")
+        lines.append(f"사업단계: {st}" + (f" ({d} 확인)" if isinstance(d, str) and d else "") + f" → {TIER_NOTE.get(tier, tier)}")
+    elif isinstance(tier, str) and tier:
+        lines.append(f"사업단계 {tier}: 단계 자료 없음, 정비사업 정보몽땅·구청에서 확인")
     tags = r.get("특수조건")
     if isinstance(tags, str) and tags.strip():
         lines.append(f"특수조건: {tags}")
@@ -103,6 +110,14 @@ def select_targets(path: Path, judges: list[str]) -> pd.DataFrame:
     df = pd.read_excel(path, sheet_name="전체")
     mask = df["판정"].apply(lambda x: any(str(x).startswith(j) for j in judges))
     df = df[mask & df["key"].astype(str).str.split("|").str[0].isin(COURT_CODES)]
+    # 입주권 가능 구간(A/B/C)만 저장. 단계를 모르는 물건은 INTEREST_STAGES에 단계미확인이 있을 때만 남김
+    stages = [x.strip() for x in os.getenv("INTEREST_STAGES", "A,B,C,단계미확인").split(",") if x.strip()]
+    if stages and "입주권단계" in df.columns:
+        rel = df["판정"].astype(str).isin(["구역안", "구역걸침"])
+        drop = rel & ~df["입주권단계"].fillna("").isin(stages)
+        if drop.any():
+            print(f"  입주권 단계가 {'/'.join(stages)}가 아닌 {int(drop.sum())}건은 저장하지 않음")
+        df = df[~drop]
     # 최근 고시가 너무 오래된 구역에만 걸린 물건은 끝난 사업지일 가능성이 커서 뺌 (고시 연도를 모르면 남김)
     min_year = int(os.getenv("INTEREST_MIN_NOTICE_YEAR", "2005"))
     if min_year and "최근고시연도" in df.columns:

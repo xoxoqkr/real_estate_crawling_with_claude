@@ -47,6 +47,8 @@ TIER = {
 UNKNOWN = "단계미확인"
 OTHER = "재개발외"  # 소규모주택정비·가로주택·주거환경개선 등: 서울시 재개발·재건축 현황에 없고 입주권 기준도 다르다
 OTHER_PATTERN = re.compile(r"소규모주택정비|가로주택|자율주택|주거환경|관리지역|모아")
+# 고시·서울시 자료의 사업유형으로 본 재개발외. 소규모재건축은 재건축으로 먼저 걸러지므로 여기 없다
+OTHER_KIND = re.compile(r"가로주택|자율주택|소규모재개발|소규모주택|시장정비|주거환경|모아")
 REBUILD = "재건축"  # 재건축은 양도 제한 시점이 달라(조합설립인가 후) 재개발 기준을 쓰지 않는다
 TIER_NOTE = {
     "A": "A 정비구역지정~사업시행인가: 조합원 승계 제한 없는 구간",
@@ -134,7 +136,12 @@ def attach(df: pd.DataFrame, csv_path: Path) -> pd.DataFrame:
             df.at[i, "사업단계"], df.at[i, "단계확인일"] = stage, date
         if judge[i] in ("구역안", "구역걸침"):
             if stage:
-                df.at[i, "입주권단계"] = REBUILD if "재건축" in kind else tier_of(stage)
+                if "재건축" in kind:
+                    df.at[i, "입주권단계"] = REBUILD
+                elif OTHER_KIND.search(kind):  # 구역명이 이름 대신 주소라 위 패턴에 안 걸려도 사업유형으로 막는다
+                    df.at[i, "입주권단계"] = OTHER
+                else:
+                    df.at[i, "입주권단계"] = tier_of(stage)
             elif OTHER_PATTERN.search(str(df.at[i, "구역명"])):
                 df.at[i, "입주권단계"] = OTHER
             else:

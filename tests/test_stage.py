@@ -108,3 +108,15 @@ def test_non_redevelopment_zones_are_separate(tmp_path):
                        "구역명": ["은천동 938-5번지 일대 소규모주택정비 관리지역 [가로주택정비사업]", "난곡동 주거환경관리사업",
                                 "신림재정비촉진지구"]})
     assert stage.attach(df, tmp_path / "없음.csv")["입주권단계"].tolist() == ["재개발외", "재개발외", "단계미확인"]
+
+
+@pytest.mark.parametrize("kind, expected", [
+    ("가로주택정비사업", "재개발외"), ("자율주택정비사업", "재개발외"), ("소규모재개발", "재개발외"),
+    ("시장정비사업", "재개발외"), ("소규모재건축", "재건축"), ("공동주택재건축", "재건축"),
+    ("주택정비형 재개발", "A"), ("도시정비형 재개발", "A"), ("", "A"),
+])
+def test_business_kind_guard(tmp_path, kind, expected):
+    """구역명에 사업 이름이 없어도(주소형 이름) 사업유형으로 재개발 기준을 잘못 적용하지 않는다."""
+    p = _csv_gu(tmp_path, f"신림동655-78번지,관악구,조합설립인가,2026-10-01,관악구 고시,{kind},\n")
+    df = pd.DataFrame({"판정": ["구역안"], "구역명": ["신림동655-78번지 일대 정비구역"], "구": ["관악구"]})
+    assert stage.attach(df, p)["입주권단계"].tolist() == [expected]

@@ -78,7 +78,11 @@ async ([url, page, cnt]) => {
 
 def is_logged_in(page) -> bool:
     try:
-        return "로그아웃" in page.inner_text("body", timeout=10_000)
+        page.wait_for_load_state("domcontentloaded", timeout=15_000)
+        # 로그인 폼이 화면에 보이면 로그아웃 상태
+        if page.locator("form[name=loginform] #pw").first.is_visible():
+            return False
+        return page.get_by_text("로그아웃").first.is_visible()
     except PWTimeout:
         return False
 
@@ -92,8 +96,16 @@ def ensure_login(page, headed: bool):
     if sa_id and sa_pw:
         page.fill("form[name=loginform] #id", sa_id)
         page.fill("form[name=loginform] #pw", sa_pw)
-        page.click("form[name=loginform] [type=submit]")
-        page.wait_for_load_state("domcontentloaded")
+        # 로그인 버튼은 <button class="login_btn">이고 type 속성이 없음 (2026-11-19 확인)
+        btn = page.locator("form[name=loginform] button.login_btn, form[name=loginform] button").first
+        try:
+            btn.click(timeout=5_000)
+        except PWTimeout:
+            page.press("form[name=loginform] #pw", "Enter")
+        try:
+            page.wait_for_load_state("networkidle", timeout=15_000)
+        except PWTimeout:
+            pass
         time.sleep(2)
     elif headed:
         print("열린 창에서 스피드옥션에 로그인해 주세요. (최대 3분 대기)")

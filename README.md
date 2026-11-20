@@ -20,11 +20,11 @@ sa_collect.py (자동 수집)  또는  스피드옥션 '엑셀' 저장(수동)
 
 ## 0. 자동 수집 (sa_collect.py)
 1. 1장 설정 뒤 브라우저를 설치합니다: `.venv\Scripts\playwright install chromium`
-2. `.env`에 `SA_ID`, `SA_PW`를 넣습니다(이 PC에만 저장). 비워 두면 창에서 직접 로그인합니다.
+2. `.env.credential`에 `SA_ID`, `SA_PW`를 넣습니다(이 PC에만 저장). 비워 두면 창에서 직접 로그인합니다.
 3. 처음 한 번은 창을 보면서 실행: `.venv\Scripts\python sa_collect.py --headed`
    - 로그인 세션은 `state\browser_profile`에 남아 다음부터는 창 없이 돕니다.
 4. 이후에는 `run_weekly.bat`을 작업 스케줄러에 **매주 월요일**로 등록합니다. 로그는 `collect.log`에 남습니다.
-5. 서울 전체로 넓히려면 `.env`의 `DISTRICTS=`를 비우거나 `sa_collect.py --districts ""`로 실행합니다.
+5. 서울 전체로 넓히려면 `.env.normal`의 `DISTRICTS=`를 비우거나 `sa_collect.py --districts ""`로 실행합니다.
 
 ### 관심물건 자동 저장
 `sa_collect.py`는 매칭이 끝나면 **구역안·구역걸침** 물건을 스피드옥션 **관심경매물건 > 박태준** 폴더에 저장하고, 메모에 다음 내용을 적습니다.
@@ -35,7 +35,7 @@ sa_collect.py (자동 수집)  또는  스피드옥션 '엑셀' 저장(수동)
 확인할 것: ① 구역 단계·권리산정기준일 ② 보존등기일 ③ 경매신청 채권자 ④ 같은 구역 낙찰가율
 ```
 - **이미 관심물건에 있는 물건은 건너뜁니다.** 기존 폴더와 메모를 덮어쓰지 않으려는 것이고, 결과는 `output\관심저장_*.csv`에 남습니다.
-- 폴더, 판정 범위, 중요도는 `.env`의 `INTEREST_FOLDER`, `INTEREST_JUDGES`, `INTEREST_STAR`로 바꿉니다. 저장하지 않으려면 `SAVE_INTEREST=0`으로 두거나 `--no-interest`를 붙입니다.
+- 폴더, 판정 범위, 중요도는 `.env.normal`의 `INTEREST_FOLDER`, `INTEREST_JUDGES`, `INTEREST_STAR`로 바꿉니다. 저장하지 않으려면 `SAVE_INTEREST=0`으로 두거나 `--no-interest`를 붙입니다.
 - 결과 엑셀만으로 따로 저장하려면 `python sa_interest.py`를 실행합니다. 저장 전에 메모를 미리 보려면 `--dry-run`을 붙입니다.
 
 수집 방식: 종합검색 화면에서 소재지(서울/구)를 고른 뒤, 화면이 쓰는 검색 요청(`search@auction_result.ajax`)을 150건씩 보내 결과표를 읽습니다. 매각기일 범위는 화면 기본값(오늘~3개월)입니다. 2026-11-19 기준 관악구는 340건으로 3쪽이었습니다.
@@ -48,7 +48,7 @@ sa_collect.py (자동 수집)  또는  스피드옥션 '엑셀' 저장(수동)
    .venv\Scripts\pip install -r requirements.txt
    ```
 2. **브이월드 인증키** 발급: vworld.kr 회원가입 → 오픈API → 인증키 발급(무료). 활용 API에서 **Geocoder API**(주소→좌표)와 **2D데이터 API**(연속지적도 필지 경계) 두 개를 고릅니다. 하나의 키로 둘 다 씁니다.
-3. `.env.example`을 `.env`로 복사하고 `VWORLD_KEY`, `WORK_DIR`을 채웁니다.
+3. `.env.credential.example`을 `.env.credential`로 복사해 `VWORLD_KEY`(와 `SA_ID`, `SA_PW`)를 채웁니다. 일반 설정은 `.env.normal`에 있습니다(`WORK_DIR` 등).
 4. **정비구역 파일**을 `WORK_DIR\zones`에 넣습니다. 압축을 풀어 .shp, .shx, .dbf, .prj를 모두 넣으세요.
    - 국토교통부_(연속주제)_도시및주거환경정비_정비구역 (공공데이터포털, 파일데이터 SHP)
    - 서울 열린데이터광장 "의제처리구역" SHP: 재정비촉진지구 등 포함

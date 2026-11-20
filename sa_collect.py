@@ -2,7 +2,7 @@
 
 동작
   1. Playwright로 Chrome을 띄우고(로그인 세션은 state/browser_profile에 유지) 로그인 상태를 확인
-     - 로그아웃 상태면 .env의 SA_ID/SA_PW로 로그인. 비어 있으면 열린 창에서 직접 로그인할 때까지 기다림
+     - 로그아웃 상태면 .env.credential의 SA_ID/SA_PW로 로그인. 비어 있으면 열린 창에서 직접 로그인할 때까지 기다림
   2. 종합검색 화면에서 소재지(서울 / 구)를 고르고, 화면이 쓰는 검색 요청
      (POST /ajax?post&ajax.id=search@auction_result.ajax)을 150건씩 페이지마다 보냄
   3. 결과표를 단순한 HTML 표로 바꿔 input\\speed_<구>_<시각>.html로 저장 → match_auctions.run_once 실행
@@ -115,7 +115,7 @@ def ensure_login(page, headed: bool):
                 break
     page.goto(SEARCH_URL, wait_until="domcontentloaded")
     if not is_logged_in(page):
-        raise RuntimeError("로그인하지 못했습니다. .env의 SA_ID/SA_PW를 확인하거나 --headed로 직접 로그인하세요.")
+        raise RuntimeError("로그인하지 못했습니다. .env.credential의 SA_ID/SA_PW를 확인하거나 --headed로 직접 로그인하세요.")
 
 
 def write_html(path, rows: list[list[str]]):

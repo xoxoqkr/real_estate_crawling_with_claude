@@ -37,7 +37,8 @@ CHECKLIST = ("① 구역 단계·고시일·권리산정기준일(정비사업 �
 def load_config() -> dict:
     try:
         from dotenv import load_dotenv
-        load_dotenv(HERE / ".env")
+        load_dotenv(HERE / ".env.credential")  # 비밀 값 (커밋 안 함)
+        load_dotenv(HERE / ".env.normal")      # 일반 설정
     except ImportError:
         pass
     base = Path(os.getenv("WORK_DIR", HERE))

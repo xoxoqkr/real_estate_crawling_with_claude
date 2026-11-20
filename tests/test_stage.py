@@ -33,12 +33,13 @@ def test_lookup_keyword_does_not_match_longer_number():
     rows = [{"kw": "신림1", "stage": "조합설립인가", "date": "2026-01-01"}]
     assert stage.lookup("신림10구역 재개발", rows)[0] is None
     assert stage.lookup("신림1구역 재개발", rows)[0] == "조합설립인가"
+    assert stage.lookup("봉천1-1구역", [{"kw": "봉천1", "stage": "사업시행인가", "date": ""}])[0] is None  # 봉천1 ≠ 봉천1-1
 
 
 def test_lookup_prefers_latest_date():
     rows = [{"kw": "가구역", "stage": "조합설립인가", "date": "2026-01-01"},
             {"kw": "가구역", "stage": "사업시행인가", "date": "2026-06-01"}]
-    assert stage.lookup("가구역", rows) == ("사업시행인가", "2026-06-01")
+    assert stage.lookup("가구역", rows) == ("사업시행인가", "2026-06-01", "")
 
 
 def _csv(tmp_path, body):
@@ -77,5 +78,33 @@ def test_make_template_keeps_existing_rows(tmp_path):
     p = _csv(tmp_path, "가구역,관리처분인가,2026-10-01,수동,메모\n")
     assert stage.make_template(xlsx, p) == 1  # 나구역만 추가, 다구역은 해당없음이라 제외
     rows = stage.load_stage_table(p)
-    assert rows == [{"kw": "가구역", "stage": "관리처분인가", "date": "2026-10-01"}]
+    assert rows == [{"kw": "가구역", "stage": "관리처분인가", "date": "2026-10-01", "gu": "", "kind": ""}]
     assert "나구역" in p.read_text(encoding="utf-8-sig")
+
+
+def test_lookup_respects_district_and_kind(tmp_path):
+    p = _csv_gu(tmp_path, "신림1,관악구,조합설립인가,2026-06-30,서울시,주택정비형 재개발,\n"
+                          "신림1,동작구,관리처분인가,2026-06-30,서울시,공동주택재건축,\n")
+    rows = stage.load_stage_table(p)
+    assert stage.lookup("신림1구역", rows, "관악구")[:2] == ("조합설립인가", "2026-06-30")
+    assert stage.lookup("신림1구역", rows, "동작구")[0] == "관리처분인가"
+    assert stage.lookup("신림1구역", rows, "광진구")[0] is None  # 자치구가 다른 행만 있으면 매칭 안 함
+
+
+def _csv_gu(tmp_path, body):
+    p = tmp_path / "zs.csv"
+    p.write_text("구역키워드,자치구,단계,확인일,출처,사업유형,비고\n" + body, encoding="utf-8-sig")
+    return p
+
+
+def test_rebuild_kind_gets_separate_tier(tmp_path):
+    p = _csv_gu(tmp_path, "가아파트,관악구,조합설립인가,2026-06-30,서울시,공동주택재건축,\n")
+    df = pd.DataFrame({"판정": ["구역안"], "구역명": ["가아파트 재건축"], "구": ["관악구"]})
+    assert stage.attach(df, p)["입주권단계"].tolist() == ["재건축"]
+
+
+def test_non_redevelopment_zones_are_separate(tmp_path):
+    df = pd.DataFrame({"판정": ["구역안", "구역안", "구역안"],
+                       "구역명": ["은천동 938-5번지 일대 소규모주택정비 관리지역 [가로주택정비사업]", "난곡동 주거환경관리사업",
+                                "신림재정비촉진지구"]})
+    assert stage.attach(df, tmp_path / "없음.csv")["입주권단계"].tolist() == ["재개발외", "재개발외", "단계미확인"]

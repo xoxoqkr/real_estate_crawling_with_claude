@@ -45,12 +45,15 @@ TIER = {
     "후보지": "제외", "이주": "제외", "철거": "제외", "착공": "제외", "준공": "제외", "이전고시": "제외",
 }
 UNKNOWN = "단계미확인"
+OTHER = "재개발외"  # 소규모주택정비·가로주택·주거환경개선 등: 서울시 재개발·재건축 현황에 없고 입주권 기준도 다르다
+OTHER_PATTERN = re.compile(r"소규모주택정비|가로주택|자율주택|주거환경|관리지역|모아")
+REBUILD = "재건축"  # 재건축은 양도 제한 시점이 달라(조합설립인가 후) 재개발 기준을 쓰지 않는다
 TIER_NOTE = {
     "A": "A 정비구역지정~사업시행인가: 조합원 승계 제한 없는 구간",
     "B": "B 분양신청: 낙찰 시점이 분양신청 기간과 맞는지 조합에 확인",
     "C": "C 관리처분인가 후: 경매 신청 채권자가 금융기관·국가일 때만 조합원 승계 가능",
 }
-COLS = ["구역키워드", "단계", "확인일", "출처", "비고"]
+COLS = ["구역키워드", "자치구", "단계", "확인일", "출처", "사업유형", "비고"]
 
 
 def normalize_stage(text) -> str | None:
@@ -79,22 +82,29 @@ def load_stage_table(path: Path) -> list[dict]:
             kw = (r.get("구역키워드") or "").strip()
             st = normalize_stage(r.get("단계"))
             if kw and st:
-                rows.append({"kw": kw, "stage": st, "date": (r.get("확인일") or "").strip()})
+                rows.append({"kw": kw, "stage": st, "date": (r.get("확인일") or "").strip(),
+                             "gu": (r.get("자치구") or "").strip(), "kind": (r.get("사업유형") or "").strip()})
             elif kw and (r.get("단계") or "").strip():
                 print(f"  zone_stage.csv: '{kw}'의 단계 '{r.get('단계')}'를 해석하지 못해 건너뜀")
     return rows
 
 
-def lookup(zone_name, rows: list[dict]) -> tuple[str | None, str]:
-    """구역명에 키워드가 들어 있는 행 중 확인일이 가장 최근인 것의 (단계, 확인일)."""
+def lookup(zone_name, rows: list[dict], gu: str | None = None) -> tuple[str | None, str, str]:
+    """구역명에 키워드가 들어 있는 행 중 확인일이 가장 최근인 것의 (단계, 확인일, 사업유형).
+
+    키워드 앞뒤로 숫자·하이픈이 이어지면 다른 구역이다(신림1 ≠ 신림10, 봉천1 ≠ 봉천1-1).
+    행에 자치구가 적혀 있고 gu도 주어지면 둘이 같을 때만 쓴다.
+    """
     if not isinstance(zone_name, str) or not zone_name:
-        return None, ""
+        return None, "", ""
     best = None
     for r in rows:
-        if re.search(re.escape(r["kw"]) + r"(?!\d)", zone_name):
+        if r.get("gu") and gu and r["gu"] != gu:
+            continue
+        if re.search(r"(?<![\d-])" + re.escape(r["kw"]) + r"(?!\d|-\d)", zone_name):
             if best is None or r["date"] > best["date"]:
                 best = r
-    return (best["stage"], best["date"]) if best else (None, "")
+    return (best["stage"], best["date"], best.get("kind", "")) if best else (None, "", "")
 
 
 def attach(df: pd.DataFrame, csv_path: Path) -> pd.DataFrame:
@@ -106,11 +116,17 @@ def attach(df: pd.DataFrame, csv_path: Path) -> pd.DataFrame:
     judge = df["판정"].astype(str)
     related = judge.isin(["구역안", "구역걸침"]) | judge.str.startswith("경계")
     for i in df.index[related]:
-        stage, date = lookup(df.at[i, "구역명"], rows)
+        gu = df.at[i, "구"] if "구" in df.columns else None
+        stage, date, kind = lookup(df.at[i, "구역명"], rows, gu)
         if stage:
             df.at[i, "사업단계"], df.at[i, "단계확인일"] = stage, date
         if judge[i] in ("구역안", "구역걸침"):
-            df.at[i, "입주권단계"] = tier_of(stage)
+            if stage:
+                df.at[i, "입주권단계"] = REBUILD if "재건축" in kind else tier_of(stage)
+            elif OTHER_PATTERN.search(str(df.at[i, "구역명"])):
+                df.at[i, "입주권단계"] = OTHER
+            else:
+                df.at[i, "입주권단계"] = UNKNOWN
     return df
 
 
